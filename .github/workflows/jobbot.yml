@@ -1,0 +1,41 @@
+name: Job Bot Workflow
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Runs every hour
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  job-search:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run job search
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          ERROR_NOTIFICATION_EMAIL: ${{ secrets.ERROR_NOTIFICATION_EMAIL }}
+        run: python src/searchjobs.py
+
+      - name: Commit sent_jobs.json if updated
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add sent_jobs.json
+          git commit -m "Update sent jobs tracking - $(date)" || echo "No changes to commit"
+          git push
+        continue-on-error: true
