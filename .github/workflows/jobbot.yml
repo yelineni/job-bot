@@ -5,6 +5,9 @@ on:
     - cron: '0 * * * *'  # Runs every hour
   workflow_dispatch:  # Allow manual trigger
 
+permissions:
+  contents: write
+
 jobs:
   job-search:
     runs-on: ubuntu-latest
@@ -12,6 +15,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v4
@@ -32,10 +38,16 @@ jobs:
         run: python src/searchjobs.py
 
       - name: Commit sent_jobs.json if updated
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add sent_jobs.json
-          git commit -m "Update sent jobs tracking - $(date)" || echo "No changes to commit"
-          git push
+          git add sent_jobs.json || echo "No sent_jobs to add"
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update sent jobs tracking - $(date)"
+            git push origin HEAD:main
+          fi
         continue-on-error: true
