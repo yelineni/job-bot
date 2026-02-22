@@ -56,68 +56,97 @@ def run_job_search():
     try:
         tz = pytz.timezone(USER_TZ)
         now = datetime.now(tz)
-        
-        if not (9 <= now.hour <= 20):
-            print(f"Skipping: {now.hour} is outside search hours.")
-            return
+        # No time-based restriction: allow the job search to run at any hour
 
         sent_jobs = load_sent_jobs()
-        all_jobs = []
+        collected = []
+        stop_search = False
+
+        # Helper to count unique collected job urls
+        def collected_count():
+            if not collected:
+                return 0
+            return pd.concat(collected).drop_duplicates(subset=['job_url']).shape[0]
 
         # 1. SEARCH PRIORITY COMPANIES IN CHUNKS OF 20
-        print("Searching priority companies in chunks...")
+        print("Searching priority companies in chunks (limit 10)...")
         for chunk in chunk_list(PRIORITY_COMPANIES, 20):
+            if stop_search:
+                break
             company_filter = "(" + " OR ".join(chunk) + ")"
             for role in ROLES:
                 try:
+                    # stop if we've already collected 10 unique new jobs
+                    if collected_count() >= 10:
+                        stop_search = True
+                        break
+                    remaining = 10 - collected_count()
                     priority_query = f"{role} {company_filter} {CORE_KEYWORDS}"
                     jobs = scrape_jobs(
                         site_name=["linkedin", "indeed", "google", "dice"],
                         search_term=priority_query,
                         location="USA",
-                        results_wanted=5, 
+                        results_wanted=remaining,
                         hours_old=1,
                         country_indeed='USA'
                     )
                     if not jobs.empty:
-                        all_jobs.append(jobs)
+                        # filter out already sent jobs immediately
+                        def _not_sent(r):
+                            company = r['company'] if 'company' in r and r['company'] else "Unknown Company"
+                            return not is_job_sent(r['job_url'], company, sent_jobs)
+
+                        not_sent_df = jobs[jobs.apply(_not_sent, axis=1)]
+                        if not not_sent_df.empty:
+                            collected.append(not_sent_df)
+                    if collected_count() >= 10:
+                        stop_search = True
+                        break
                 except Exception as e:
                     print(f"Chunk search error: {e}")
 
-        # 2. GENERAL SEARCH FALLBACK
-        current_df = pd.concat(all_jobs).drop_duplicates(subset=['job_url']) if all_jobs else pd.DataFrame()
-        
-        if len(current_df) < 10:
-            print(f"Found {len(current_df)} priority jobs. Filling with general results...")
+        # 2. GENERAL SEARCH FALLBACK if needed
+        if collected_count() < 10:
+            print(f"Found {collected_count()} priority jobs. Filling with general results (limit to reach 10)...")
             for role in ROLES:
                 try:
+                    if collected_count() >= 10:
+                        break
+                    remaining = 10 - collected_count()
                     general_query = f"{role} {CORE_KEYWORDS}"
                     general_jobs = scrape_jobs(
                         site_name=["linkedin", "indeed", "google", "dice", "zip_recruiter"],
                         search_term=general_query,
                         location="USA",
-                        results_wanted=15,
+                        results_wanted=remaining,
                         hours_old=1,
                         country_indeed='USA'
                     )
                     if not general_jobs.empty:
-                        all_jobs.append(general_jobs)
+                        def _not_sent(r):
+                            company = r['company'] if 'company' in r and r['company'] else "Unknown Company"
+                            return not is_job_sent(r['job_url'], company, sent_jobs)
+
+                        not_sent_df = general_jobs[general_jobs.apply(_not_sent, axis=1)]
+                        if not not_sent_df.empty:
+                            collected.append(not_sent_df)
                 except Exception as e:
                     print(f"General search error: {e}")
 
         # 3. FINAL FILTER & TOP 10 LIMIT + DEDUPLICATION CHECK
-        if all_jobs:
-            final_df = pd.concat(all_jobs).drop_duplicates(subset=['job_url'])
-            
-            # Filter out already sent jobs (by URL + company combo)
-            new_jobs = []
-            for _, row in final_df.iterrows():
-                company = row['company'] if row['company'] else "Unknown Company"
+        if collected:
+            final_df = pd.concat(collected).drop_duplicates(subset=['job_url'])
+            final_top_10 = final_df.head(10)
+
+            # Double-check we still haven't sent these (defensive)
+            new_rows = []
+            for _, row in final_top_10.iterrows():
+                company = row['company'] if 'company' in row and row['company'] else "Unknown Company"
                 if not is_job_sent(row['job_url'], company, sent_jobs):
-                    new_jobs.append(row)
-            
-            final_top_10 = pd.DataFrame(new_jobs).head(10)
-            
+                    new_rows.append(row)
+
+            final_top_10 = pd.DataFrame(new_rows).head(10)
+
             if not final_top_10.empty:
                 send_email(final_top_10, sent_jobs)
                 save_sent_jobs(sent_jobs)
