@@ -83,7 +83,7 @@ def run_job_search():
                     remaining = 10 - collected_count()
                     priority_query = f"{role} {company_filter} {CORE_KEYWORDS}"
                     jobs = scrape_jobs(
-                        site_name=["linkedin", "indeed", "google", "dice"],
+                        site_name=["linkedin", "indeed", "google"],
                         search_term=priority_query,
                         location="USA",
                         results_wanted=remaining,
@@ -115,7 +115,7 @@ def run_job_search():
                     remaining = 10 - collected_count()
                     general_query = f"{role} {CORE_KEYWORDS}"
                     general_jobs = scrape_jobs(
-                        site_name=["linkedin", "indeed", "google", "dice", "zip_recruiter"],
+                        site_name=["linkedin", "indeed", "google", "zip_recruiter"],
                         search_term=general_query,
                         location="USA",
                         results_wanted=remaining,
