@@ -87,7 +87,7 @@ def run_job_search():
                         search_term=priority_query,
                         location="USA",
                         results_wanted=remaining,
-                        hours_old=1,
+                        hours_old=3,
                         country_indeed='USA'
                     )
                     if not jobs.empty:
@@ -119,7 +119,7 @@ def run_job_search():
                         search_term=general_query,
                         location="USA",
                         results_wanted=remaining,
-                        hours_old=1,
+                        hours_old=3,
                         country_indeed='USA'
                     )
                     if not general_jobs.empty:
@@ -171,7 +171,7 @@ def send_email(df, sent_jobs):
     msg['From'] = sender
     msg['To'] = recipient
 
-    html = f"<h3>New Postings (Past Hour)</h3><p>Found {len(df)} matching roles:</p><ol>"
+    html = f"<h3>New Postings (Past 3 Hours)</h3><p>Found {len(df)} matching roles:</p><ol>"
     for _, row in df.iterrows():
         company = row['company'] if row['company'] else "Unknown Company"
         site = row['site_name'] if 'site_name' in row else "Job Board"
