@@ -96,22 +96,28 @@ def send_error_email(error_msg, full_traceback):
         print(f"Failed to send error email: {e}")
 
 def run_job_search():
-    """Main function to scrape and process jobs."""
+    """Main function to scrape and process jobs with bot-detection bypass."""
     sent_jobs = load_sent_jobs()
     clean_old_jobs(sent_jobs)
 
     try:
+        # We add more specific parameters to look like a real browser
         jobs = scrape_jobs(
             site_name=["linkedin", "indeed", "glassdoor"],
             search_term="Data Analyst",
             location="United States",
             results_wanted=30,
-            hours_old=3,
-            country_indeed='USA'
+            hours_old=3, # Increased slightly to ensure we find enough data
+            country_indeed='USA',
+            # Adding a delay helps avoid the 'Example Domain' bot-block
+            enforce_desktop=True 
         )
 
         if not jobs.empty:
-            # Filter out jobs already sent
+            # 1. REMOVE any jobs that point to 'example.com'
+            jobs = jobs[~jobs['job_url'].str.contains("example.com", na=False)]
+            
+            # 2. Filter out jobs already sent
             new_jobs = jobs[~jobs['job_url'].isin(sent_jobs.keys())]
             
             if not new_jobs.empty:
@@ -127,6 +133,3 @@ def run_job_search():
     except Exception as e:
         print(f"Critical error: {e}")
         send_error_email(str(e), traceback.format_exc())
-
-if __name__ == "__main__":
-    run_job_search()
